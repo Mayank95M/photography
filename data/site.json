@@ -13,15 +13,32 @@
     "interval": 7
   },
   "about": {
-    "intro": "",
+    "intro": "Mayank is a PhD student at IIT Delhi. He uses photography as a medium to escape his otherwise monotonous research life. He likes B/W photography as he thinks too much degree of freedom takes away the control from the creator and makes the creation complex to comprehend.",
     "bio": "",
     "location": "New Delhi",
     "timezone": "Asia/Kolkata",
     "email": "",
-    "instagram": "",
-    "facts": [],
+    "instagram": "notthedoctoryouthink",
+    "facts": [
+      {
+        "label": "Shooting since",
+        "value": "2018"
+      }
+    ],
     "links": [],
-    "portrait": null
+    "portrait": {
+      "src": "photos/about/portrait-20261013-4j236h.jpg",
+      "small": "photos/about/portrait-20261013-4j236h-small.jpg",
+      "w": 1930,
+      "h": 2600,
+      "sw": 965,
+      "sh": 1300,
+      "focus": [
+        0.5,
+        0.35
+      ],
+      "color": "#2a2a2a"
+    }
   },
   "processing": {
     "longEdge": 2560,
