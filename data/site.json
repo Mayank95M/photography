@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "Mayank Mayookh",
+  "statement": "",
+  "description": "Photographs by Mayank Mayookh.",
+  "theme": "paper",
+  "defaultView": "prints",
+  "showCameraInfo": true,
+  "protectImages": true,
+  "footerNote": "For prints, commissions or a conversation",
+  "hero": {
+    "autoplay": true,
+    "interval": 7
+  },
+  "about": {
+    "intro": "",
+    "bio": "",
+    "location": "New Delhi",
+    "timezone": "Asia/Kolkata",
+    "email": "",
+    "instagram": "",
+    "facts": [],
+    "links": [],
+    "portrait": null
+  },
+  "processing": {
+    "longEdge": 2560,
+    "quality": 0.9,
+    "removeBorders": true,
+    "enhance": true
+  }
+}

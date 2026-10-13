@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.d{fill:#1a1a18}.l{fill:#ededea}.s{stroke:#ededea;stroke-width:1.6;stroke-linecap:round;fill:none;opacity:.55}@media (prefers-color-scheme:dark){.d{fill:#e7e6e1}.l{fill:#000}.s{stroke:#000}}</style>
+<circle class="d" cx="32" cy="32" r="31"/>
+<g class="s"><path d="M35.97 43.85L19.93 59.47"/><path d="M25.21 42.49L3.00 39.69"/><path d="M19.56 33.23L7.91 14.12"/><path d="M23.28 23.04L30.96 2.02"/><path d="M33.57 19.60L54.79 12.49"/><path d="M42.67 25.49L61.46 37.65"/><path d="M43.74 36.29L45.95 58.56"/></g>
+<polygon class="l" points="43.74,36.29 35.97,43.85 25.21,42.49 19.56,33.23 23.28,23.04 33.57,19.60 42.67,25.49"/>
+</svg>

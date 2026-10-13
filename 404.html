@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="paper" data-root="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Out of focus</title>
+<script>
+  // GitHub Pages serves this file for any missing path, at that path, so work out where the site root is.
+  (function () {
+    // The admin panel writes the real root into data-root when you publish.
+    var root = document.documentElement.getAttribute('data-root');
+    if (!root || root === 'auto') {
+      var parts = location.pathname.split('/').filter(Boolean);
+      root = /\.github\.io$/i.test(location.hostname) && parts.length > 1 ? '/' + parts[0] + '/' : '/';
+    }
+    document.write('<base href="' + root + '">');
+    try { var t = localStorage.getItem('pf-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  })();
+</script>
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<main class="lost">
+  <h1 tabindex="0">Out of focus</h1>
+  <p>There is no page at this address.</p>
+  <p class="ui"><a href="./">See the photographs</a></p>
+</main>
+</body>
+</html>
