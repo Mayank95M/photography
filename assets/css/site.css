@@ -258,6 +258,18 @@ button {
   transform: scaleX(1);
   transform-origin: left;
 }
+/* Small phones: keep the name and all four menu items on one line. */
+@media (max-width: 389px) {
+  .site-header {
+    gap: 14px;
+  }
+  .site-nav {
+    gap: 12px;
+  }
+  .brand {
+    font-size: 1.0625rem;
+  }
+}
 
 /* ---------------------------------------------------------------- iris */
 .iris {
