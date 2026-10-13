@@ -445,7 +445,16 @@ export function renderFooter(site) {
   );
 }
 
+// The Admin link sits at the end of the main menu on every page. It's added here rather than
+// in the HTML so that updating it never touches the pages the admin panel rewrites.
+function addAdminLink() {
+  const nav = document.querySelector('.site-nav');
+  if (!nav || nav.querySelector('[data-admin-link]')) return;
+  nav.append(h('a', { href: siteUrl('admin/'), rel: 'nofollow', 'data-admin-link': '' }, 'Admin'));
+}
+
 export function initPage() {
+  addAdminLink();
   scroll.init();
   initCursor();
   initTransitions();
