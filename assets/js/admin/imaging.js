@@ -394,8 +394,10 @@ export function resize(source, w, h) {
   return out;
 }
 
-export function fitWithin(w, h, maxLong) {
-  const s = Math.min(1, maxLong / Math.max(w, h));
+/** Size that fits within maxLong on the long edge. Never enlarges unless allowUp is set. */
+export function fitWithin(w, h, maxLong, { allowUp = false } = {}) {
+  let s = maxLong / Math.max(w, h);
+  if (!allowUp) s = Math.min(1, s);
   return [Math.round(w * s), Math.round(h * s)];
 }
 

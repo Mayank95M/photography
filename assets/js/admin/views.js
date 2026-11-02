@@ -1,9 +1,10 @@
 // Photos, About page and Settings screens.
 import { h, $, toast, field, checkbox, confirmDialog, debounce, batch, shortDate, dateInputValue, fromDateInput } from './ui.js';
 import { decode, blobToBase64, crop as cropCanvas, resize, fitWithin, encode, cropRect } from './imaging.js';
-import { render, enhancePlan, inspect, newId } from './pipeline.js';
+import { render, enhancePlan, inspect, newId, stageText } from './pipeline.js';
 import { cropEditor, compareView } from './editor.js';
-import { gpuAvailable, loadModel } from './upscaler.js';
+import { enhancementAvailable } from './upscaler.js';
+import { installBox } from './sitefiles.js';
 
 const parseTags = (s) =>
   [...new Set(String(s || '').split(',').map((t) => t.trim()).filter(Boolean))].map((t) => t[0].toUpperCase() + t.slice(1));
@@ -33,7 +34,7 @@ export function photosView(ctx) {
         h('h1', {}, 'Photographs'),
         h('p', {}, `${photos.length} on the site${pending ? `, with ${pending} change${pending === 1 ? '' : 's'} waiting to be published` : ''}. Drag to change the order; click a photo to edit it.`),
       ),
-      h('div', { class: 'row' }, h('a', { class: 'btn', href: '#add' }, 'Add photos'), h('a', { class: 'btn', href: '#instagram' }, 'Import from Instagram')),
+      h('div', { class: 'row' }, h('a', { class: 'btn', href: '#add' }, 'Add photos'), h('a', { class: 'btn', href: '#instagram' }, 'Import from Instagram'), photos.length ? h('a', { class: 'btn', href: '#improve' }, 'Improve quality') : null),
     );
     if (!photos.length) {
       root.replaceChildren(
@@ -189,7 +190,16 @@ function editPhoto(ctx, id) {
     toast(where === 'start' ? 'Moved to the front.' : 'Moved to the end.');
   };
   const long = Math.max(p.w, p.h);
-  const plan = enhancePlan(p.w, p.h, ctx.settings());
+  const q = p.quality || (p.enhanced ? 'fast' : null);
+  const plan = q ? null : enhancePlan(p.w, p.h, ctx.settings());
+  const qualityNote =
+    q === 'fast'
+      ? ', enhanced with the fast model. Improve quality can redo it with Best quality.'
+      : q
+        ? ', enhanced with Best quality.'
+        : plan
+          ? `. Small for large screens: enhancing would take it to ${plan.to} px.`
+          : '.';
   const fixBtn = h('button', { class: 'btn btn-small', type: 'button' }, plan ? 'Crop or enhance…' : 'Adjust crop…');
   fixBtn.addEventListener('click', () => reprocess(ctx, p, close));
 
@@ -197,7 +207,7 @@ function editPhoto(ctx, id) {
     'div',
     { class: 'drawer-body' },
     h('div', { class: 'drawer-preview' }, preview),
-    h('p', { class: 'muted' }, `${p.w} × ${p.h} px${p.enhanced ? ', enhanced' : ''}${plan ? `. Small for large screens: enhancing would take it to ${plan.to} px.` : '.'}`),
+    h('p', { class: 'muted' }, `${p.w} × ${p.h} px${qualityNote}`),
     h(
       'div',
       { class: 'row' },
@@ -298,11 +308,13 @@ async function reprocess(ctx, p, closeDrawer) {
   const settings = ctx.settings();
   const w = info.width * (1 - insets.left - insets.right);
   const hh = info.height * (1 - insets.top - insets.bottom);
+  const q = p.quality || (p.enhanced ? 'fast' : null);
+  const plan = q ? null : enhancePlan(w, hh, settings);
   let enhance = false;
-  if (enhancePlan(w, hh, settings) && (await gpuAvailable())) {
+  if (plan && (await enhancementAvailable())) {
     enhance = await confirmDialog({
       title: 'Enhance the resolution too?',
-      body: `The photo is ${Math.round(Math.max(w, hh))} px on its long edge. Enhancing takes it to ${enhancePlan(w, hh, settings).to} px. This takes a little while.`,
+      body: `The photo is ${Math.round(Math.max(w, hh))} px on its long edge. Enhancing takes it to ${plan.to} px, which takes a minute or two.`,
       confirm: 'Enhance',
     });
   }
@@ -310,13 +322,13 @@ async function reprocess(ctx, p, closeDrawer) {
   const note = toast(enhance ? 'Enhancing… keep this tab open.' : 'Saving the new version…', { timeout: 0 });
   ctx.busy(true);
   try {
-    if (enhance) await loadModel();
     const out = await render(info, {
       insets,
       enhance,
       settings,
+      finish: p.finish ? 'off' : undefined, // the copy on the site is already finished
       onProgress: ({ stage, fraction }) => {
-        note.firstChild.textContent = stage === 'enhance' ? `Enhancing… ${Math.round(fraction * 100)}%` : 'Saving the new version…';
+        note.firstChild.textContent = stage === 'encode' ? 'Saving the new version…' : stageText(stage, fraction);
       },
     });
     const id = newId(p.date ? new Date(p.date) : new Date());
@@ -326,7 +338,7 @@ async function reprocess(ctx, p, closeDrawer) {
     ctx.store.previews.set(p.id, URL.createObjectURL(out.thumb));
     ctx.store.replaceFiles(
       p.id,
-      { src: full, thumb, w: out.w, h: out.h, tw: out.tw, th: out.th, lqip: out.lqip, color: out.color, enhanced: out.enhanced || p.enhanced || false },
+      { src: full, thumb, w: out.w, h: out.h, tw: out.tw, th: out.th, lqip: out.lqip, color: out.color, enhanced: out.enhanced || p.enhanced || false, quality: out.quality || q, finish: out.finish || p.finish || null },
       [
         { path: full, sha: a },
         { path: thumb, sha: b },
@@ -409,20 +421,20 @@ export function aboutView(ctx) {
         return;
       }
       ctx.busy(true);
-      const settings = { ...ctx.settings(), longEdge: 2600 };
+      // The portrait fills the whole screen, so it gets more pixels than other photos.
+      const settings = { ...ctx.settings(), longEdge: 3600 };
       const w = info.width * (1 - insets.left - insets.right);
       const hh = info.height * (1 - insets.top - insets.bottom);
-      const enhance = !!enhancePlan(w, hh, settings) && (await gpuAvailable());
-      if (enhance) await loadModel();
+      const enhance = !!enhancePlan(w, hh, settings) && (await enhancementAvailable());
       const out = await render(info, {
         insets,
         enhance,
         settings,
-        onProgress: ({ stage, fraction }) => (status.textContent = stage === 'enhance' ? `Enhancing… ${Math.round(fraction * 100)}%` : 'Saving…'),
+        onProgress: ({ stage, fraction }) => (status.textContent = stageText(stage, fraction)),
       });
       // A second, lighter size for phones.
       const fullBmp = await decode(out.full);
-      const [sw, sh] = fitWithin(fullBmp.width, fullBmp.height, 1300);
+      const [sw, sh] = fitWithin(fullBmp.width, fullBmp.height, 1600);
       const smallBlob = await encode(resize(fullBmp, sw, sh), 'image/jpeg', 0.86);
       const id = newId(new Date());
       const big = `photos/about/portrait-${id}.jpg`;
@@ -517,14 +529,26 @@ export function aboutView(ctx) {
 export function settingsView(ctx) {
   const { store } = ctx;
   const s = store.site;
-  const proc = { longEdge: 2560, quality: 0.9, removeBorders: true, enhance: true, ...(s.processing || {}) };
+  const proc = { longEdge: 2560, quality: 0.9, removeBorders: true, enhance: true, enhanceQuality: 'best', finish: 'natural', ...(s.processing || {}) };
   const save = batch((fields) => store.editSite(fields), 350);
   const radio = (name, value, current, label, hint, onpick) =>
     h('label', { class: 'check' }, h('input', { type: 'radio', name, value, checked: current === value, onchange: () => onpick(value) }), h('span', {}, label, hint ? h('small', {}, hint) : null));
   const select = (value, options, onchange, label) =>
     h('select', { 'aria-label': label, onchange: (e) => onchange(e.target.value) }, ...options.map(([v, t]) => h('option', { value: String(v), selected: String(v) === String(value) ? true : null }, t)));
 
-  return h(
+  // Site files: install updates (and the Best quality models) through the API.
+  const modelsLine = h('p', {});
+  const paintModels = () => {
+    const r = ctx.models?.ready;
+    modelsLine.replaceChildren(
+      h('span', { class: `status ${r ? 'ok' : r === false ? 'check' : ''}` }, r ? 'Best quality models installed' : r === false ? 'Best quality models not installed yet' : 'Checking the Best quality models…'),
+      r === false ? h('span', { class: 'muted' }, ' Photos are enhanced with Fast until they are. Drop best-quality-models.zip below to install them.') : null,
+    );
+  };
+  paintModels();
+  ctx.models?.addEventListener('change', paintModels);
+
+  const root = h(
     'div',
     {},
     h('div', { class: 'view-head' }, h('div', {}, h('h1', {}, 'Settings'))),
@@ -565,7 +589,22 @@ export function settingsView(ctx) {
         field('JPEG quality', select(proc.quality, [[0.85, 'Good (smaller files)'], [0.9, 'High, recommended'], [0.95, 'Very high']], (v) => store.editSite({ processing: { quality: Number(v) } }), 'JPEG quality')),
       ),
       checkbox('Remove borders automatically', proc.removeBorders !== false, (v) => store.editSite({ processing: { removeBorders: v } })),
-      checkbox('Enhance small photos with AI', proc.enhance !== false, (v) => store.editSite({ processing: { enhance: v } }), 'Uses the Real-ESRGAN model in your browser. Needs a computer or phone with WebGL.'),
+      checkbox('Enhance small photos with AI', proc.enhance !== false, (v) => store.editSite({ processing: { enhance: v } }), 'Uses Real-ESRGAN in your browser. Needs a computer or phone with WebGL.'),
+      h(
+        'div',
+        { class: 'grid2' },
+        field(
+          'Enhancement quality',
+          select(proc.enhanceQuality, [['best', 'Best: natural detail, 1–3 min a photo'], ['fast', 'Fast: seconds a photo, smoother']], (v) => store.editSite({ processing: { enhanceQuality: v } }), 'Enhancement quality'),
+          'Best uses the full Real-ESRGAN models (a 33 MB download the first time).',
+        ),
+        field(
+          'Finish',
+          select(proc.finish, [['natural', 'Natural: depth, crispness and a fine grain'], ['vivid', 'Vivid: stronger contrast and colour'], ['off', 'Off']], (v) => store.editSite({ processing: { finish: v } }), 'Finish'),
+          'Applied when a photo is added or improved. Photos already on the site change only when you improve them.',
+        ),
+      ),
+      h('p', {}, h('a', { href: '#improve' }, 'Improve photos already on your site')),
     ),
     h(
       'div',
@@ -577,10 +616,24 @@ export function settingsView(ctx) {
     ),
     h(
       'div',
+      { class: 'panel section-gap', id: 'site-files' },
+      h('h2', {}, 'Site files'),
+      modelsLine,
+      h(
+        'p',
+        { class: 'muted' },
+        'Install updates to the site here instead of uploading them on GitHub: drop the ZIP as it is, without unzipping it. Its files are added to your repository in one change. Your photos, texts and settings are never touched.',
+      ),
+      installBox(ctx),
+    ),
+    h(
+      'div',
       { class: 'panel section-gap' },
       h('h2', {}, 'This device'),
       h('p', { class: 'muted' }, `Connected to ${ctx.gh.owner}/${ctx.gh.repo}, branch ${ctx.gh.branch}.`),
       h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => ctx.lock() }, 'Lock now'), h('button', { class: 'btn btn-danger', type: 'button', onclick: () => ctx.forget() }, 'Forget this device')),
     ),
   );
+  root.cleanup = () => ctx.models?.removeEventListener('change', paintModels);
+  return root;
 }

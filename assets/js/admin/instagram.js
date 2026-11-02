@@ -3,7 +3,7 @@
 
 const ZIP_SRC = new URL('../../vendor/zip.min.js', import.meta.url);
 
-function loadZip() {
+export function loadZip() {
   if (window.zip) return Promise.resolve(window.zip);
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');

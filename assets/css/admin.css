@@ -710,6 +710,49 @@ body.admin {
   font-size: 0.75rem;
 }
 
+/* ---------------------------------------------------------------- improve quality */
+.drop-compact {
+  min-height: 140px;
+  padding: 24px;
+}
+.improve-cards {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  margin-top: 14px;
+}
+.improve-card {
+  cursor: pointer;
+}
+.improve-card .card-img input {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ink);
+}
+.improve-card:not(.is-on) .card-img img {
+  opacity: 0.6;
+}
+.improve-card.is-skip {
+  cursor: default;
+}
+.improve-card.is-skip .card-img img {
+  opacity: 0.35;
+}
+.improve-card.is-done .card-img img {
+  opacity: 1;
+}
+.improve-card .plan {
+  white-space: normal;
+  line-height: 1.35;
+}
+@media (max-width: 640px) {
+  .improve-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+}
+
 /* ---------------------------------------------------------------- instagram */
 .steps {
   margin: 0;

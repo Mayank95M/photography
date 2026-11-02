@@ -1,11 +1,11 @@
 // "Add photos" and "Import from Instagram": prepare photos, process them, upload the files
 // to GitHub and stage them for publishing.
 import { h, $, toast, field, checkbox, confirmDialog, duration, dateInputValue, fromDateInput } from './ui.js';
-import { inspect, render, describeFrame, enhancePlan, newId } from './pipeline.js';
+import { inspect, render, describeFrame, enhancePlan, newId, stageText } from './pipeline.js';
 import { blobToBase64, decode, detectBorders, pixels, UnsupportedImageError } from './imaging.js';
 import { cropEditor, cropPreview, compareView } from './editor.js';
 import { openArchive, splitCaption } from './instagram.js';
-import { gpuAvailable, loadModel } from './upscaler.js';
+import { gpuAvailable, enhancementAvailable, estimateSeconds, chooseModel } from './upscaler.js';
 
 /** Process one photo and stage it. Returns the staged record and render output. */
 export async function stagePhoto(ctx, { info, insets, enhance, meta, at = 'start', onProgress, signal }) {
@@ -39,6 +39,8 @@ export async function stagePhoto(ctx, { info, insets, enhance, meta, at = 'start
     lqip: out.lqip,
     color: out.color,
     enhanced: out.enhanced,
+    quality: out.quality,
+    finish: out.finish,
     source: meta.source || { type: 'upload' },
     added: new Date().toISOString(),
   };
@@ -63,7 +65,12 @@ function planText(info, insets, enhance, settings, gpu) {
   const hh = Math.round(info.height * (1 - insets.top - insets.bottom));
   const long = Math.max(w, hh);
   const plan = enhance ? enhancePlan(w, hh, settings) : null;
-  if (plan && gpu) return `Will be enhanced from ${plan.from} px to ${plan.to} px on the long edge.`;
+  if (plan && gpu) {
+    const mins = Math.max(1, Math.round(estimateSeconds(plan.model, w, hh) / 60));
+    return plan.model === 'fast'
+      ? `Will be enhanced (Fast) from ${plan.from} px to ${plan.to} px on the long edge.`
+      : `Will be enhanced with Best quality from ${plan.from} px to ${plan.to} px on the long edge, about ${mins} min.`;
+  }
   if (plan && !gpu) return `${long} px on the long edge. This browser can't run the enhancement (no WebGL), so it will be published as is.`;
   if (long > (settings.longEdge || 2560)) return `Will be resized to ${settings.longEdge || 2560} px on the long edge.`;
   return `Published at ${long} px on the long edge.`;
@@ -217,13 +224,9 @@ export function addView(ctx) {
     addBtn.disabled = clearBtn.disabled = true;
     ctx.busy(true);
     let added = 0;
-    if (todo.some((q) => q.enhance) && gpu) {
-      try {
-        await loadModel();
-      } catch {
-        toast('The enhancement model could not be loaded, so photos will be added without it.', { tone: 'bad' });
-        todo.forEach((q) => (q.enhance = false));
-      }
+    if (todo.some((q) => q.enhance) && !(await enhancementAvailable())) {
+      toast('This browser can’t run the enhancement, so photos will be added without it.', { tone: 'bad' });
+      todo.forEach((q) => (q.enhance = false));
     }
     for (const item of todo) {
       item.busy = true;
@@ -239,8 +242,8 @@ export function addView(ctx) {
           meta: item.meta,
           onProgress: ({ stage, fraction }) => {
             status.className = 'status';
-            status.textContent = stage === 'enhance' ? `Enhancing… ${Math.round(fraction * 100)}%` : stage === 'upload' ? 'Uploading…' : 'Saving…';
-            bar.firstChild.style.width = `${stage === 'enhance' ? fraction * 80 : stage === 'upload' ? 90 : 85}%`;
+            status.textContent = stageText(stage, fraction);
+            bar.firstChild.style.width = `${stage === 'enhance' ? fraction * 80 : stage === 'download' ? fraction * 10 : stage === 'upload' ? 90 : 85}%`;
           },
         });
         item.done = true;
@@ -531,7 +534,16 @@ export function instagramView(ctx) {
           'div',
           { class: 'grid2' },
           checkbox('Remove borders', opts.removeBorders, (v) => (opts.removeBorders = v), 'Trims the frames you added for Instagram.'),
-          checkbox('Enhance resolution with AI', opts.enhance, (v) => (opts.enhance = v), 'Slower: roughly 10 to 30 seconds a photo on a laptop.'),
+          checkbox(
+            'Enhance resolution with AI',
+            opts.enhance,
+            (v) => (opts.enhance = v),
+            (ctx.settings().enhanceQuality || 'best') === 'best'
+              ? 'Best quality: about 1–3 minutes a photo on a laptop.'
+              : (ctx.store.site.processing?.enhanceQuality || 'best') === 'best'
+                ? 'Fast for now: Best quality isn’t installed yet (Settings → Site files).'
+                : 'Fast: a few seconds a photo.',
+          ),
           checkbox('Use the first line of each caption as the title', opts.titles, (v) => (opts.titles = v)),
           checkbox('Keep hashtags in captions', opts.keepHashtags, (v) => (opts.keepHashtags = v)),
           checkbox('Order all photos by date taken, newest first', opts.sort, (v) => (opts.sort = v)),
@@ -571,10 +583,13 @@ export function instagramView(ctx) {
   async function startImport() {
     const picked = state.items.filter((i) => i.on && !i.heic);
     if (!picked.length) return;
-    if (opts.enhance && picked.length > 40) {
+    const settings = ctx.settings();
+    const model = chooseModel(1350, settings.longEdge || 2560, settings.enhanceQuality || 'best');
+    const per = estimateSeconds(model, 1080, 1350) + 4;
+    if (opts.enhance && model && per * picked.length > 20 * 60) {
       const ok = await confirmDialog({
         title: `Enhance all ${picked.length} photos?`,
-        body: `Enhancing takes about 10 to 30 seconds per photo, so this could take ${duration(picked.length * 20)}. Keep this tab open while it runs. You can also import without enhancing and enhance favourites later from the Photos page.`,
+        body: `Enhancing takes about ${duration(per)} a photo on a typical laptop, so this could take ${duration(per * picked.length)}. Keep this tab open and in front while it runs. You can also import without enhancing now and use Improve quality on your favourites later.`,
         confirm: 'Import and enhance',
       });
       if (!ok) return;
@@ -588,13 +603,9 @@ export function instagramView(ctx) {
     state.paused = false;
     paint();
     ctx.busy(true);
-    if (opts.enhance && (await gpuAvailable())) {
-      try {
-        await loadModel();
-      } catch {
-        opts.enhance = false;
-        toast('The enhancement model could not be loaded; importing without it.', { tone: 'bad' });
-      }
+    if (opts.enhance && !(await enhancementAvailable())) {
+      opts.enhance = false;
+      toast('This browser can’t run the enhancement, so photos are imported without it.', { tone: 'bad' });
     }
     for (const it of picked) {
       while (state.paused && !state.stop) await new Promise((r) => setTimeout(r, 300));
@@ -625,7 +636,7 @@ export function instagramView(ctx) {
           meta,
           at: 'end',
           onProgress: ({ stage, fraction }) => {
-            state.stage = stage === 'enhance' ? `Enhancing ${Math.round(fraction * 100)}%` : stage === 'upload' ? 'Uploading' : 'Saving';
+            state.stage = stageText(stage, fraction);
             refreshRun(false);
           },
         });

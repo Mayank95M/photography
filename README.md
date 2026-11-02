@@ -33,6 +33,8 @@ Everything runs in the browser. There is no server and nothing to install: GitHu
 Easiest: on the empty repository page, click **uploading an existing file**, then drag **everything inside this folder** (not the folder itself) into the browser window, and click **Commit changes**.
 
 > The `assets` folder must stay a folder. Chrome and Edge keep folders when you drag them in. If yours doesn't, use [GitHub Desktop](https://desktop.github.com/) instead: clone the repository, copy these files into it, then Commit and Push.
+>
+> If GitHub refuses the upload as too large, upload everything except the folders `assets/models/realesrgan-x2plus` and `assets/models/realesrgan-x4plus`. Then zip those two folders inside an `assets/models` folder and install the ZIP from the admin panel (**Settings → Site files**).
 
 ### 3. Turn on GitHub Pages
 
@@ -97,14 +99,23 @@ Keep the ZIP somewhere safe: it is your original copy of every post.
 - Drag to reorder. **Sort by date** puts the newest first.
 - Click a photo to edit its title, caption, place, date, tags, camera details, or to mark it **Featured** (shown in the opening slideshow and circled on the contact sheet) or **Hidden**.
 - **Crop or enhance…** re-crops a published photo, and offers to enhance it if it is small.
+- **Improve quality** (also its own tab) re-processes photos that look soft on large screens; see below.
 - **Select** lets you feature, hide or delete several at once.
 - Tags become filters on the site. Use a few broad ones (Mountains, Street, People).
 
 **Add photos** — from your computer or phone. Each one is checked for a border and shows what will happen before you add it. **Compare before and after** shows the enhancement at real pixels.
 
+**Improve quality** — makes photos already on your site hold up on large screens, keeping their titles, captions, dates and order.
+- Each photo is labelled: *Low resolution*, *Smoothed by the fast enhancer*, *Sharp* or *Best quality*. The ones that need work are selected for you.
+- **Drop originals here** for the best result: your Instagram archive ZIP (photos are found by their Instagram id), original files from your phone or computer, or versions enlarged in another app (found by name, or by how they look). Files must show the same framing as the photo on your site.
+- Choose **Best quality** or **Fast**, a **Finish** (Natural, Vivid or Off) and a **Size**, then **Improve**. It shows an estimate, keeps your screen on while it works, and stages each photo as it finishes. **Compare** shows before and after at real pixels; **Publish** puts them on the site.
+- Rather use a desktop app? **Download photos for a desktop app** gives you a ZIP of the selected photos, borders removed, each named after its photo. Enlarge the folder in [Upscayl](https://upscayl.org) (free, for Windows, Mac and Linux; fastest with a graphics card), then drop the results back in.
+
 **About page** — your portrait (click your face so it stays in view on any screen), name, introduction, biography, facts and links.
 
-**Settings** — Paper or Darkroom, the opening line, the default view, slideshow speed, camera details on labels, the published image size and quality.
+**Settings** — Paper or Darkroom, the opening line, the default view, slideshow speed, camera details on labels, the published image size and JPEG quality, the enhancement quality (Best or Fast) and the finish (Natural, Vivid or Off) used for new photos.
+
+**Site files** (in Settings) — installs updates to the site from a ZIP, through the same connection the admin uses to publish: drop the ZIP as it is, without unzipping it. Its files are added to the repository in one change; photos, texts and settings are never touched. Use it for the Best quality models (their files are too large for GitHub's upload page) and for later updates, instead of uploading files on GitHub.
 
 ### Publishing
 
@@ -116,7 +127,13 @@ Changes are collected first, and **Publish** saves them all to GitHub as one cha
 
 **Border removal** looks at each edge for a band of one flat colour (white, black, beige, any colour) that ends in a sharp straight edge, and also catches blurred-copy backgrounds and thin keylines inside a mat. It steps over text written on the border, such as a handle or a place name. When a bright sky runs into a white border it uses the opposite side, since apps centre the photo. Anything it isn't sure about is left for you to check.
 
-**Resolution enhancement** uses [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (the `realesr-general-x4v3` model), running on your device's graphics chip through TensorFlow.js. It enlarges four times and also cleans up the JPEG blockiness Instagram adds; the result is then sized to the published size (2560 px on the long edge unless you change it). Photos already that large are not enhanced. Expect roughly 10–30 seconds per photo on a laptop; it needs a browser with WebGL (any recent Chrome, Edge, Firefox or Safari).
+**Resolution enhancement** uses [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN), running on your device's graphics chip through TensorFlow.js (any recent Chrome, Edge, Firefox or Safari on a computer). Besides adding resolution, it cleans up the JPEG blockiness Instagram adds.
+- **Best quality** uses the full models, `RealESRGAN_x2plus` for photos that need up to 2.5× (most Instagram photos) and `RealESRGAN_x4plus` for smaller ones. They keep natural-looking texture. Expect about 1–3 minutes a photo on a laptop, faster with a graphics card; the first use downloads 33 MB, which the browser then keeps. The two models are installed once from **Settings → Site files**; until they are, photos are enhanced with Fast.
+- **Fast** uses the small `realesr-general-x4v3` model: seconds a photo, but it smooths fine texture such as foliage, fur and skin.
+- The result is sized to the published size (2560 px on the long edge unless you change it), but never stretched more than 1.5× beyond what the model produced. Photos already large enough are not enhanced.
+- Enhancement adds detail that looks right; it can't recover the exact detail Instagram threw away. For favourite photos, an original file is always better, and Improve quality takes one whenever you have it.
+
+**Finishing** is applied after the photo is sized: local contrast for depth, sharpening matched to the screen size, a touch of vibrance, and a very fine grain that keeps enlarged photos from looking plastic. *Natural* is subtle; *Vivid* is stronger.
 
 **Files:** each photograph is stored twice: `photos/full/` (JPEG, for the viewer) and `photos/thumb/` (a smaller WebP, for the gallery). The list of photographs and all settings are plain JSON in `data/`.
 
@@ -135,9 +152,10 @@ Changes are collected first, and **Publish** saves them all to GitHub as one cha
 
 ## Limits worth knowing
 
-- GitHub Pages sites can be up to 1 GB. At the default size each photo takes about 1–1.5 MB, so roughly 600 photographs fit comfortably.
+- GitHub Pages sites can be up to 1 GB. At the default size each photo takes about 1–2 MB (detailed, finished photos are at the top of that range), so roughly 500 photographs fit comfortably.
 - GitHub rebuilds the site at most about ten times an hour. Publishing in batches (which the admin panel does) keeps you well inside that.
 - Instagram has stored most photos at about 1080 px wide, and older posts at 640 px or less, which is why enhancement exists.
+- Large enhancement runs need the admin tab to stay open and in front; browsers slow down work in background tabs.
 
 ## Changing the design
 
@@ -145,4 +163,4 @@ Colours are CSS variables at the top of `assets/css/site.css` (`--paper`, `--ink
 
 ## Credits
 
-Real-ESRGAN model © 2021 Xintao Wang, BSD-3-Clause · TensorFlow.js, Apache-2.0 · GSAP, GreenSock standard licence · Lenis, MIT · zip.js, BSD-3-Clause · exifr, MIT · Newsreader and Archivo, SIL Open Font License. Licence texts are in `assets/vendor/licenses` and `assets/models`.
+Real-ESRGAN models (x2plus, x4plus, general-x4v3) © 2021 Xintao Wang, BSD-3-Clause · TensorFlow.js, Apache-2.0 · GSAP, GreenSock standard licence · Lenis, MIT · zip.js, BSD-3-Clause · exifr, MIT · Newsreader and Archivo, SIL Open Font License. Licence texts are in `assets/vendor/licenses` and `assets/models`.

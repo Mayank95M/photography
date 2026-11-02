@@ -8,5 +8,7 @@
 | zip.js 2.23 | `assets/vendor/zip.min.js` | BSD-3-Clause — `zipjs-LICENSE` |
 | exifr 7.1 | `assets/vendor/exifr-lite.umd.js` | MIT — `exifr-LICENSE` |
 | Real-ESRGAN `realesr-general-x4v3` weights (converted to float16) | `assets/models/realesr-general-x4v3/` | BSD-3-Clause, © 2021 Xintao Wang — `assets/models/realesr-general-x4v3/LICENSE` |
+| Real-ESRGAN `RealESRGAN_x2plus` weights (converted to float16) | `assets/models/realesrgan-x2plus/` | BSD-3-Clause, © 2021 Xintao Wang — `assets/models/realesrgan-x2plus/LICENSE` |
+| Real-ESRGAN `RealESRGAN_x4plus` weights (converted to float16) | `assets/models/realesrgan-x4plus/` | BSD-3-Clause, © 2021 Xintao Wang — `assets/models/realesrgan-x4plus/LICENSE` |
 | Newsreader (Production Type) | `assets/fonts/newsreader-*.woff2` | SIL Open Font License 1.1 — `newsreader-OFL.txt` |
 | Archivo (Omnibus-Type) | `assets/fonts/archivo-*.woff2` | SIL Open Font License 1.1 — `archivo-OFL.txt` |

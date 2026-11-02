@@ -1,7 +1,9 @@
 // Turns a photo file into the files the site publishes:
-// border removed → resolution enhanced (optional) → full-size JPEG + light thumbnail + placeholder.
+// border removed → resolution enhanced (optional) → finished for screens (optional)
+// → full-size JPEG + light thumbnail + placeholder.
 import { decode, detectFrame, crop, cropRect, resize, fitWithin, encode, placeholder, supportsWebp, makeCanvas } from './imaging.js';
-import { upscale4x, enhancementAvailable } from './upscaler.js';
+import { upscale, chooseModel, enhancementAvailable, bestModelsReady } from './upscaler.js';
+import { finish as finishPixels } from './finish.js';
 
 const EXIFR_SRC = new URL('../../vendor/exifr-lite.umd.js', import.meta.url);
 let exifrLoading;
@@ -113,25 +115,43 @@ export function describeFrame(frame) {
   return { text: frame.confidence === 'low' ? `${name} edge, maybe a border` : `${name} border found`, tone };
 }
 
-/** Decide whether the AI enhancement should run, and to what size. */
+/**
+ * Decide whether the AI enhancement should run, with which model, and to what size.
+ * settings.enhanceQuality is 'best' (Real-ESRGAN x2plus/x4plus) or 'fast' (the compact model).
+ */
 export function enhancePlan(w, h, settings) {
   const target = settings.longEdge || 2560;
   const long = Math.max(w, h);
-  if (long >= target * 0.6) return null;
-  const out = Math.min(target, long * 4);
-  return { from: long, to: Math.round(out) };
+  const model = chooseModel(long, target, settings.enhanceQuality || 'best');
+  if (!model) return null;
+  return { from: long, to: model === 'fast' ? Math.round(Math.min(target, long * 4)) : target, model };
 }
 
-const MAX_UPSCALE_PIXELS = (navigator.deviceMemory && navigator.deviceMemory <= 4) || /Mobi/i.test(navigator.userAgent) ? 12e6 : 30e6;
+export const QUALITY_NAMES = { x2: 'Best', x4: 'Best', fast: 'Fast' };
+
+/** Short progress text for a render stage. */
+export function stageText(stage, fraction = 0) {
+  const pct = `${Math.round(fraction * 100)}%`;
+  if (stage === 'download') return `Downloading the enhancement model… ${pct}`;
+  if (stage === 'enhance') return `Enhancing… ${pct}`;
+  if (stage === 'finish') return 'Finishing…';
+  if (stage === 'upload') return 'Uploading…';
+  return 'Saving…';
+}
+
+const SMALL_DEVICE = (navigator.deviceMemory && navigator.deviceMemory <= 4) || /Mobi/i.test(navigator.userAgent);
+const MAX_UPSCALE_PIXELS = SMALL_DEVICE ? 12e6 : 30e6;
 
 /**
  * Produce the publishable files.
- * @param {{bitmap: ImageBitmap, width:number, height:number}} src
- * @param {{insets:{top:number,right:number,bottom:number,left:number}, enhance:boolean, settings:object}} opts
+ * @param {{bitmap: ImageBitmap|HTMLCanvasElement, width:number, height:number}} src
+ * @param {{insets:{top:number,right:number,bottom:number,left:number}, enhance:boolean, settings:object,
+ *          finish?: 'natural'|'vivid'|'off', seed?: number}} opts
  */
-export async function render(src, { insets, enhance, settings, onProgress = () => {}, signal } = {}) {
+export async function render(src, { insets, enhance, settings, finish, seed = 1, onProgress = () => {}, signal } = {}) {
   const W = src.width;
   const H = src.height;
+  const target = settings.longEdge || 2560;
   const rect = cropRect(W, H, {
     top: Math.round((insets?.top || 0) * H),
     right: Math.round((insets?.right || 0) * W),
@@ -139,33 +159,65 @@ export async function render(src, { insets, enhance, settings, onProgress = () =
     left: Math.round((insets?.left || 0) * W),
   });
   let canvas = crop(src.bitmap, rect);
-  let enhanced = false;
-  const plan = enhance ? enhancePlan(canvas.width, canvas.height, settings) : null;
+  let model = null;
+  let plan = enhance ? enhancePlan(canvas.width, canvas.height, settings) : null;
+  // Until the Best quality models are installed on the site, enhance with Fast instead.
+  if (plan && plan.model !== 'fast' && !(await bestModelsReady())) plan = enhancePlan(canvas.width, canvas.height, { ...settings, enhanceQuality: 'fast' });
   if (plan && (await enhancementAvailable())) {
-    // Keep the 4× intermediate inside a memory budget.
-    const pixels = canvas.width * canvas.height * 16;
+    // Keep the enlarged intermediate inside a memory budget.
+    const scale = plan.model === 'x2' ? 2 : 4;
+    const pixels = canvas.width * canvas.height * scale * scale;
     if (pixels > MAX_UPSCALE_PIXELS) {
       const s = Math.sqrt(MAX_UPSCALE_PIXELS / pixels);
       canvas = resize(canvas, canvas.width * s, canvas.height * s);
     }
-    onProgress({ stage: 'enhance', fraction: 0 });
-    const big = await upscale4x(canvas, { signal, onProgress: (f) => onProgress({ stage: 'enhance', fraction: f }) });
-    const [tw, th] = fitWithin(big.width, big.height, plan.to);
+    onProgress({ stage: 'enhance', fraction: 0, model: plan.model });
+    const big = await upscale(canvas, {
+      model: plan.model,
+      signal,
+      onDownload: (f) => onProgress({ stage: 'download', fraction: f, model: plan.model }),
+      onProgress: (f) => onProgress({ stage: 'enhance', fraction: f, model: plan.model }),
+    });
+    // Reach the target size, but never stretch the AI's output by more than 1.5×: a tiny original
+    // is better published a little smaller than blown up into mush.
+    const bigLong = Math.max(big.width, big.height);
+    const [tw, th] = fitWithin(big.width, big.height, Math.min(plan.to, Math.round(bigLong * 1.5)), { allowUp: true });
     canvas = resize(big, tw, th);
     if (canvas !== big) big.width = big.height = 0; // free the large intermediate
-    enhanced = true;
+    model = plan.model;
   } else {
-    const [tw, th] = fitWithin(canvas.width, canvas.height, settings.longEdge || 2560);
+    const [tw, th] = fitWithin(canvas.width, canvas.height, target);
     if (tw !== canvas.width) canvas = resize(canvas, tw, th);
+  }
+  const style = finish ?? settings.finish ?? 'natural';
+  if (style && style !== 'off') {
+    onProgress({ stage: 'finish', fraction: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    finishPixels(img, style, { seed });
+    ctx.putImageData(img, 0, 0);
   }
   onProgress({ stage: 'encode', fraction: 1 });
   const full = await encode(flatten(canvas), 'image/jpeg', settings.quality || 0.9);
   const [tw, th] = fitWithin(canvas.width, canvas.height, 1200);
   const small = resize(canvas, tw, th);
   const webp = supportsWebp();
-  const thumb = await encode(flatten(small), webp ? 'image/webp' : 'image/jpeg', 0.8);
+  const thumb = await encode(flatten(small), webp ? 'image/webp' : 'image/jpeg', 0.86);
   const ph = placeholder(small);
-  const out = { full, thumb, thumbExt: webp ? 'webp' : 'jpg', w: canvas.width, h: canvas.height, tw: small.width, th: small.height, ...ph, enhanced };
+  const out = {
+    full,
+    thumb,
+    thumbExt: webp ? 'webp' : 'jpg',
+    w: canvas.width,
+    h: canvas.height,
+    tw: small.width,
+    th: small.height,
+    ...ph,
+    enhanced: !!model,
+    quality: model,
+    finish: style && style !== 'off' ? style : null,
+  };
   canvas.width = canvas.height = 0;
   return out;
 }

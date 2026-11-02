@@ -136,6 +136,8 @@ export class Store extends EventTarget {
       deepMerge(added.photo, fields);
       added.files = files;
     } else {
+      // An earlier replacement that was never published is superseded: its files never reached the site.
+      for (const o of this.ops) if (o.type === 'edit' && o.id === id && o.files?.length) o.files = [];
       this.ops.push({ type: 'edit', id, fields: clone(fields), files, remove: oldPaths });
     }
     this.save();

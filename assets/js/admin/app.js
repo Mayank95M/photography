@@ -7,10 +7,12 @@ import { seal, unseal, device } from './vault.js';
 import { Store } from './store.js';
 import { photosView, aboutView, settingsView } from './views.js';
 import { addView, instagramView } from './upload.js';
+import { improveView } from './improve.js';
+import { bestModelsReady } from './upscaler.js';
 
 const app = $('#app');
 const SITE_URL = new URL('../', location.href).href;
-const DEFAULTS = { longEdge: 2560, quality: 0.9, removeBorders: true, enhance: true };
+const DEFAULTS = { longEdge: 2560, quality: 0.9, removeBorders: true, enhance: true, enhanceQuality: 'best', finish: 'natural' };
 
 try {
   const t = localStorage.getItem('pf-theme');
@@ -183,11 +185,28 @@ async function enter() {
   }
   if (store.site.theme) document.documentElement.dataset.theme = store.site.theme;
 
+  // Best quality needs its models on the site (installed once, from Settings → Site files).
+  // Until they are, photos are enhanced with Fast. `ready` is null until checked.
+  const models = new EventTarget();
+  models.ready = null;
+  models.check = async (fresh = false) => {
+    const before = models.ready;
+    models.ready = await bestModelsReady({ fresh });
+    if (models.ready !== before) models.dispatchEvent(new Event('change'));
+    return models.ready;
+  };
+  await Promise.race([models.check(), new Promise((r) => setTimeout(r, 4000))]);
+
   ctx = {
     gh,
     store,
     siteUrl: SITE_URL,
-    settings: () => ({ ...DEFAULTS, ...(store.site.processing || {}) }),
+    models,
+    settings: () => {
+      const s = { ...DEFAULTS, ...(store.site.processing || {}) };
+      if (s.enhanceQuality === 'best' && models.ready === false) s.enhanceQuality = 'fast';
+      return s;
+    },
     busy: (on) => {
       busyCount = Math.max(0, busyCount + (on ? 1 : -1));
     },
@@ -200,6 +219,7 @@ async function enter() {
     ['photos', 'Photos'],
     ['add', 'Add photos'],
     ['instagram', 'Import from Instagram'],
+    ['improve', 'Improve quality'],
     ['about', 'About page'],
     ['settings', 'Settings'],
   ];
@@ -229,7 +249,7 @@ async function enter() {
   let current;
   const route = () => {
     const id = (location.hash.slice(1) || 'photos').split('/')[0];
-    const make = { photos: photosView, add: addView, instagram: instagramView, about: aboutView, settings: settingsView }[id] || photosView;
+    const make = { photos: photosView, add: addView, instagram: instagramView, improve: improveView, about: aboutView, settings: settingsView }[id] || photosView;
     current?.cleanup?.();
     current = make(ctx);
     view.replaceChildren(current);

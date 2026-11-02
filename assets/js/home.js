@@ -519,7 +519,6 @@ function renderPrints(list) {
   let mobileFlip = 0;
 
   const frames = new Set();
-  const visible = new Set();
   const developIO = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
@@ -531,16 +530,6 @@ function renderPrints(list) {
     },
     { rootMargin: '0px 0px -14% 0px', threshold: 0.12 },
   );
-  const parallaxIO = new IntersectionObserver(
-    (entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) visible.add(e.target);
-        else visible.delete(e.target);
-      }
-    },
-    { rootMargin: '15% 0px' },
-  );
-
   const addRow = (row) => {
     const hang = h('div', { class: 'hang' });
     if (row.kind === 'pair') {
@@ -577,7 +566,6 @@ function renderPrints(list) {
     hang.querySelectorAll('.print-frame').forEach((f) => {
       frames.add(f);
       developIO.observe(f);
-      parallaxIO.observe(f);
     });
   };
 
@@ -592,22 +580,9 @@ function renderPrints(list) {
   more();
   sentinelIO.observe(sentinel);
 
-  // Gentle parallax inside each frame, computed only for frames on screen.
-  const tick = () => {
-    if (reduceMotion) return;
-    const vh = innerHeight;
-    for (const f of visible) {
-      const r = f.getBoundingClientRect();
-      const t = (r.top + r.height / 2 - vh / 2) / (vh / 2 + r.height / 2);
-      const img = f.firstElementChild;
-      if (img) img.style.transform = `translate3d(0, ${(-t * 5.5).toFixed(2)}%, 0)`;
-    }
-  };
-  gsap.ticker.add(tick);
+  // Each print is shown whole, at exactly its own shape: no enlargement or cropping for effects.
   printsCleanup.push(() => {
-    gsap.ticker.remove(tick);
     developIO.disconnect();
-    parallaxIO.disconnect();
     sentinelIO.disconnect();
   });
   return wrap;

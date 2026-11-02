@@ -43,7 +43,9 @@ async function boot() {
     img = h('img', {
       src: siteUrl(portrait.src),
       srcset: portrait.small ? `${siteUrl(portrait.small)} ${portrait.sw}w, ${siteUrl(portrait.src)} ${portrait.w}w` : null,
-      sizes: '100vw',
+      // The portrait ends up covering the whole screen, so on a tall phone screen it is drawn
+      // much wider than the screen; ask for a file that's wide enough for that.
+      sizes: `${Math.ceil(Math.max(innerWidth, innerHeight * (portrait.w / portrait.h)))}px`,
       alt: `Portrait of ${name}`,
       decoding: 'async',
       fetchpriority: 'high',
